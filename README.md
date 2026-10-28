@@ -1,79 +1,162 @@
 # Donation Management System | Java Spring Boot REST API
 
-A Java and Spring Boot REST API for recording donations and managing donor and prospective-donor records. The project demonstrates a layered backend design with REST controllers, service classes, and Spring Data JPA repositories backed by an H2 database.
+[![Java](https://img.shields.io/badge/Java-26-ED8B00?logo=openjdk&logoColor=white)](https://www.java.com/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.0-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![Maven](https://img.shields.io/badge/Maven-wrapper-C71A36?logo=apachemaven&logoColor=white)](https://maven.apache.org/)
+[![H2](https://img.shields.io/badge/Database-H2-1E4D2B)](https://www.h2database.com/)
 
-## Features
+A backend REST API for recording donations and maintaining donor and prospective-donor records. The application is built with Spring Boot and organized into controller, service, and repository layers, with persistence provided by Spring Data JPA and an H2 database.
 
-- Record donations and automatically create a donor record for a phone number not already registered.
-- Remove a matching prospective-donor record after a donation is recorded.
-- Retrieve donations ordered by date, newest first.
-- Calculate a donor's total donation amount and retrieve donations associated with a donor.
-- Register donors and prospective donors, and retrieve the first prospective donor's phone number.
-- Calculate the aggregate of the `numPayment` field across donation records.
+## What the project contains
+
+- JPA entities for donations, donors, and prospective donors.
+- REST controllers for donation and donor-related operations.
+- Service classes that implement the current donation and donor workflows.
+- Spring Data JPA repositories backed by H2.
+- A Spring Boot application-context test.
+
+This repository contains a backend API; it does not include a frontend, authentication, or authorization.
 
 ## Technology
 
-- **Java 26**
-- **Spring Boot 4.1.0**
-- **Spring Web MVC** for REST endpoints
-- **Spring Data JPA** for persistence
-- **H2** as the database
-- **Maven** for builds and dependency management
-- **JUnit 5 / Spring Boot Test** for the application context test
+| Technology | Use in this project |
+|---|---|
+| Java 26 | Application language and configured Java version |
+| Spring Boot 4.1.0 | Application framework |
+| Spring Web MVC | REST controllers and HTTP endpoints |
+| Spring Data JPA | Repository and persistence layer |
+| H2 | Database, configured as a file in the user's home directory |
+| Maven Wrapper | Build and run commands |
+| Spring Boot Test | Application-context test dependency |
 
-## Project structure
+## Architecture
 
-```text
-src/
-├── main/java/com/example/project/
-│   ├── Controllers/    REST endpoints
-│   ├── Models/         Donation and donor entities
-│   ├── Repositories/   Spring Data JPA repositories
-│   ├── Services/       Application operations
-│   └── ProjectApplication.java
-├── main/resources/
-│   └── application.properties
-└── test/java/          Application context test
+```mermaid
+flowchart LR
+    Client[HTTP client]
+    Controllers[REST Controllers]
+    Services[Service layer]
+    Repositories[Spring Data JPA Repositories]
+    Database[(H2 database)]
+    Entities[Donation / Donor / Potential Donor entities]
+
+    Client --> Controllers
+    Controllers --> Services
+    Services --> Repositories
+    Repositories --> Database
+    Services -. uses .-> Entities
+    Repositories -. persists .-> Entities
 ```
 
-## REST API
+The controllers expose HTTP routes and delegate to services. Services perform the application operations and use Spring Data JPA repositories to access the entities stored in H2.
 
-The application exposes the following routes:
+## Implemented API
 
-| Method | Route | Purpose |
-|---|---|---|
-| `POST` | `/insertDonation` | Record a donation from a JSON `Donation` object. A non-zero `sum` is required by the service. |
-| `GET` | `/GetSumDonation` | Return the sum of the `numPayment` values across donation records. |
-| `GET` | `/sortdate` | Return donations ordered by date, newest first. |
-| `GET` | `/sumdonor` | Return the total donation amount for the phone number in the request body. |
-| `POST` | `/addDonor` | Save a donor from a JSON `Donor` object. |
-| `GET` | `/sumdonor1` | Return the total donation amount for the donor in the request body. |
-| `GET` | `/AllDonation` | Return donations for the donor in the request body. |
-| `GET` | `/getFirst` | Return the first prospective donor's phone number, or `"000"` when none are stored. |
-| `POST` | `/add` | Save a prospective donor from a JSON `PotantialDonor` object. |
+The routes below are declared by the current controllers. The notes describe their current code paths; they do not imply input validation or behavior beyond what is implemented.
 
-The entity fields in the request bodies are defined by the classes in `src/main/java/com/example/project/Models`. The `GET` routes that accept request bodies use the behavior implemented in the current controllers.
+| Method | Route | Request body | Implemented behavior |
+|---|---|---|---|
+| `POST` | `/insertDonation` | `Donation` JSON | For a non-zero `sum`, creates a donor containing the donation's phone if no donor with that ID exists, saves the donation, removes a prospective donor with that ID if present, and returns `"ADD"`. For zero `sum`, returns `"not money"` without saving. |
+| `GET` | `/GetSumDonation` | None | Iterates through the donation records and adds their `numPayment` values. It does not total the `sum` field. |
+| `GET` | `/sortdate` | None | Returns donation records sorted by `date` descending. |
+| `GET` | `/sumdonor` | A JSON string containing a phone number | Attempts to filter donation records by phone and sum their `sum` values, returning `-1` if no records match. The current service compares phone strings by reference (`==`), so matching by string content is not reliable. |
+| `POST` | `/addDonor` | `Donor` JSON | Saves the supplied donor through the donor repository. The controller does not define a response body. |
+| `GET` | `/sumdonor1` | `Donor` JSON | Passes the donor's phone to the same phone-based donation-sum operation as `/sumdonor`, including its reference-based string comparison. |
+| `GET` | `/AllDonation` | `Donor` JSON | Attempts to filter donation records by the donor's phone and return the matching list. The current service compares phone strings by reference (`==`), so matching by string content is not reliable. |
+| `GET` | `/getFirst` | None | Returns the phone number of the first item in the repository result, or `"000"` if the result is empty. No ordering is specified. |
+| `POST` | `/add` | `PotantialDonor` JSON | Saves the supplied prospective donor. The controller does not define a response body. |
 
-**Implementation note:** The donor lookup services compare phone strings by reference rather than by value. As a result, `/sumdonor`, `/sumdonor1`, and `/AllDonation` may not match the requested donor as intended.
+The `GET` routes `/sumdonor`, `/sumdonor1`, and `/AllDonation` accept request bodies in the current controller definitions. Support for GET request bodies can vary between clients and intermediaries.
+
+## Request JSON examples
+
+These examples use fictional values and the property names declared by the Java entity classes. The `date` value is shown as an ISO-8601 UTC timestamp.
+
+### Donation
+
+Used by `POST /insertDonation`.
+
+```json
+{
+  "idDonation": "donation-001",
+  "numPayment": 1,
+  "option": 0,
+  "date": "2026-01-15T10:30:00.000+00:00",
+  "phone": "555-0101",
+  "sum": 50.0
+}
+```
+
+### Donor
+
+Used by `POST /addDonor` and as the request-body shape for `GET /sumdonor1` and `GET /AllDonation`.
+
+```json
+{
+  "phone": "555-0101",
+  "name": "Alex Example",
+  "address": "123 Example Street",
+  "mail": "alex@example.com"
+}
+```
+
+### Prospective donor
+
+Used by `POST /add`.
+
+```json
+{
+  "phone": "555-0102",
+  "name": "Jordan Example"
+}
+```
+
+### Phone number lookup
+
+`GET /sumdonor` takes a JSON string as its body:
+
+```json
+"555-0101"
+```
 
 ## Run locally
 
-**Prerequisite:** Install JDK 26.
+### Prerequisites
 
-From the project directory, start the application with the Maven Wrapper:
+- JDK 26
+
+### Start the application
+
+From the project directory, run:
 
 ```powershell
 .\mvnw.cmd spring-boot:run
 ```
 
-Run the tests with:
+The application uses Spring Boot's default HTTP port (`8080`) and the configured file-based H2 database. The H2 console is enabled at `/h2console/`.
+
+### Run the tests
 
 ```powershell
 .\mvnw.cmd test
 ```
 
-The current configuration uses a file-based H2 database in the user's home directory and enables the H2 console at `/h2console/`. The project currently contains an application context-load test.
+The test source contains an application-context-load test.
 
-## Current scope
+## Project layout
 
-This repository contains the backend API and persistence layer; no frontend, authentication, or authorization implementation is present. The API is a compact project implementation, and its behavior is described above according to the current source code.
+```text
+src/
+├── main/
+│   ├── java/com/example/project/
+│   │   ├── Controllers/
+│   │   ├── Models/
+│   │   ├── Repositories/
+│   │   ├── Services/
+│   │   └── ProjectApplication.java
+│   └── resources/
+│       └── application.properties
+└── test/
+    └── java/com/example/project/
+        └── ProjectApplicationTests.java
+```
